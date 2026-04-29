@@ -1,0 +1,22 @@
+# Core Vector Operations & Indexing
+hnswlib==0.8.0
+numpy==1.26.4
+
+# API Communication
+requests==2.32.2
+
+# Data Handling
+pandas==2.2.2
+
+# Document Processing (Pinned for stability)
+docling-core==2.25.0
+docling==2.28.4
+transformers==4.42.0
+
+# Utilities
+tqdm==4.66.2
+PyYAML==6.0.1
+
+# Web Server
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
