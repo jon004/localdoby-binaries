@@ -106,7 +106,7 @@ def main():
     elif args_dict['command'] == "sliding-prompt":
         results = sliding_prompt_cmd.execute(
             query=args_dict['prompt'], 
-            file_filters=args_dict['file_filter'], 
+            file_filters=args_dict['file_filter'] if args_dict['file_filter'] is not None else [], 
             model_path=args_dict['model'], 
             chat_template=args_dict['chat_template'], 
             rag_filter=args_dict['rag_filter'], 
