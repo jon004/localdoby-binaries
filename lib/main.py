@@ -14,6 +14,7 @@ from commands.upsert import UpsertCommand
 from commands.search import SearchCommand
 from commands.sliding_prompt import SlidingPromptCommand
 from commands.cluster import ClusterCommand
+from commands.prompt import PromptCommand
 from languagemodels.generator import LanguageModelClient
 from configs import (DEFAULT_SIMILARITY_SCORE_FOR_SEARCH_THRESHOLD, DEFAULT_SEARCH_LIMIT,
                     DEFAULT_SLIDING_PROMPT_SIMILARITY_SCORE, DEFAULT_GRANULAR_SIMILARITY_SCORE,
@@ -57,6 +58,7 @@ def main():
     search_cmd = SearchCommand(conn)
     sliding_prompt_cmd = SlidingPromptCommand(conn)
     cluster_cmd = ClusterCommand()
+    prompt_cmd = PromptCommand()
 
     parser = argparse.ArgumentParser(description="Vector Document CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
@@ -76,6 +78,7 @@ def main():
 
     sliding_prompt_p = subparsers.add_parser("sliding-prompt")
     sliding_prompt_p.add_argument("-p", "--prompt", required=True)
+    sliding_prompt_p.add_argument("--system-prompt", help="System prompt to prefill before prompting")
     sliding_prompt_p.add_argument("-ff", "--file-filter", nargs="+", help="Filter by specific files")
     sliding_prompt_p.add_argument("-m", "--model", help="Model path")
     sliding_prompt_p.add_argument("-t", "--chat-template", help="Chat template")
@@ -91,6 +94,13 @@ def main():
     cluster_p.add_argument("--chunks", nargs="+", required=True, help="List of sentences")
     cluster_p.add_argument("-s", "--similarity-score", type=float, default=DEFAULT_CLUSTER_SIMILARITY_SCORE, help="Minimum similarity score threshold (default: 0.94)")
     cluster_p.add_argument("-g", "--single-sentence-granularity", action="store_true", help="Enable single sentence granularity clustering (default: false)")
+
+    prompt_p = subparsers.add_parser("prompt")
+    prompt_p.add_argument("-p", "--prompt", required=True, help="The prompt to send to the LLM")
+    prompt_p.add_argument("--system-prompt", help="System prompt to prefill before prompting")
+    prompt_p.add_argument("-m", "--model", help="Model path")
+    prompt_p.add_argument("-t", "--chat-template", help="Chat template")
+    prompt_p.add_argument("--do-not-reset-context", action="store_true", help="Do not reset context after prompt (default: false)")
 
     args = parser.parse_known_args()
     args_dict = vars(args[0])
@@ -114,13 +124,23 @@ def main():
             single_sentence_granularity=args_dict['single_sentence_granularity'],
             without_siblings=args_dict['without_siblings'],
             no_granular_filter=args_dict['no_granular_filter'],
-            granular_similarity_score=args_dict['granular_similarity_score']
+            granular_similarity_score=args_dict['granular_similarity_score'],
+            system_prompt=args_dict.get('system_prompt')
         )
         print(json.dumps(results, indent=2))
     elif args_dict['command'] == "cluster":
         cluster_cmd.threshold = args_dict['similarity_score']
         cluster_cmd.single_sentence_granularity = args_dict['single_sentence_granularity']
         results = cluster_cmd.execute(args_dict['chunks'])
+        print(json.dumps(results, indent=2))
+    elif args_dict['command'] == "prompt":
+        results = prompt_cmd.execute(
+            prompt=args_dict['prompt'],
+            system_prompt=args_dict.get('system_prompt'),
+            model_path=args_dict.get('model'),
+            chat_template=args_dict.get('chat_template'),
+            do_not_reset_context=args_dict.get('do_not_reset_context', False)
+        )
         print(json.dumps(results, indent=2))
     else:
         parser.print_help()
