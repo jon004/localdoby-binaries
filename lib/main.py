@@ -7,7 +7,6 @@ import json
 import sys
 import os
 import logging
-
 from dataclasses import asdict
 
 from commands.upsert import UpsertCommand
@@ -15,25 +14,23 @@ from commands.search import SearchCommand
 from commands.sliding_prompt import SlidingPromptCommand
 from commands.cluster import ClusterCommand
 from commands.prompt import PromptCommand
-from languagemodels.generator import LanguageModelClient
+from commands.pipeline import PipelineCommand
+from commands.retrieve import RetrieveCommand
 from configs import (DEFAULT_SIMILARITY_SCORE_FOR_SEARCH_THRESHOLD, DEFAULT_SEARCH_LIMIT,
                     DEFAULT_SLIDING_PROMPT_SIMILARITY_SCORE, DEFAULT_GRANULAR_SIMILARITY_SCORE,
-                    DEFAULT_CLUSTER_SIMILARITY_SCORE)
+                    DEFAULT_CLUSTER_SIMILARITY_SCORE, DEFAULT_RERANK_THRESHOLD)
 
-DB_PATH = os.path.expanduser("~/.vectordb/documents.db")
-EMBEDDER_MODEL_NAME = "embed-model.gguf"
-LANGUAGE_MODEL_URL = "http://0.0.0.0:8080"
+# UPDATED: Database path relocated to the standard localdoby directory[cite: 19]
+DB_PATH = os.path.expanduser("~/.localdoby/db/localdoby.db")
 
 def setup_logging(verbose: bool):
     """Setup logging configuration"""    
     level = logging.INFO if verbose else logging.ERROR
-    # Set level on root logger so all child loggers inherit it
     logging.getLogger().setLevel(level)
     logging.basicConfig(
         level=level,
         format='%(levelname)s - %(message)s',
-        # format='%(asctime)s - %(levelname)s - %(message)s',
-        stream=sys.stderr  # Log to stderr so stdout is clean for JSON output
+        stream=sys.stderr
     )
     return logging.getLogger(__name__)
 
@@ -47,7 +44,8 @@ def main():
     # Setup logging based on verbose flag
     logger = setup_logging(known_args.verbose)
     
-    # 1. Shared Database Connection
+    # 1. Shared Database Connection[cite: 2]
+    # Ensure the directory exists as defined in dev_install.sh[cite: 19]
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     if known_args.verbose:
@@ -59,6 +57,8 @@ def main():
     sliding_prompt_cmd = SlidingPromptCommand(conn)
     cluster_cmd = ClusterCommand()
     prompt_cmd = PromptCommand()
+    retrieve_cmd = RetrieveCommand(conn)
+    pipeline_cmd = PipelineCommand(conn)
 
     parser = argparse.ArgumentParser(description="Vector Document CLI")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
@@ -72,46 +72,65 @@ def main():
     search_p.add_argument("-q", "--query", required=True)
     search_p.add_argument("-ff", "--file-filter", nargs="+")
     search_p.add_argument("-l", "--limit", type=int, default=DEFAULT_SEARCH_LIMIT)
-    search_p.add_argument("-s", "--similarity-score", type=float, default=DEFAULT_SIMILARITY_SCORE_FOR_SEARCH_THRESHOLD, help="Minimum similarity score threshold (default: 0.555)")
-    search_p.add_argument("-g", "--single-sentence-granularity", action="store_true", help="Enable single sentence granularity search (default: false)")
-    search_p.add_argument("--filter-seen-chunks", action="store_true", help="Skip filtering of duplicate chunks (default: false)")
+    search_p.add_argument("-s", "--similarity-score", type=float, default=DEFAULT_SIMILARITY_SCORE_FOR_SEARCH_THRESHOLD)
+    search_p.add_argument("-g", "--single-sentence-granularity", action="store_true")
+    search_p.add_argument("--filter-seen-chunks", action="store_true")
 
     sliding_prompt_p = subparsers.add_parser("sliding-prompt")
     sliding_prompt_p.add_argument("-p", "--prompt", required=True)
     sliding_prompt_p.add_argument("--system-prompt", help="System prompt to prefill before prompting")
-    sliding_prompt_p.add_argument("-ff", "--file-filter", nargs="+", help="Filter by specific files")
+    sliding_prompt_p.add_argument("-ff", "--file-filter", nargs="+")
     sliding_prompt_p.add_argument("-m", "--model", help="Model path")
     sliding_prompt_p.add_argument("-t", "--chat-template", help="Chat template")
-    sliding_prompt_p.add_argument("-rf", "--rag-filter", action="store_true", help="Enable RAG filtering (default: evaluate all chunks)")
-    sliding_prompt_p.add_argument("-s", "--similarity-score", type=float, default=DEFAULT_SLIDING_PROMPT_SIMILARITY_SCORE, help="Minimum similarity score threshold for RAG filtering (default: 0.555)")
-    # Granularity Flags
+    sliding_prompt_p.add_argument("-rf", "--rag-filter", action="store_true")
+    sliding_prompt_p.add_argument("-s", "--similarity-score", type=float, default=DEFAULT_SLIDING_PROMPT_SIMILARITY_SCORE)
     sliding_prompt_p.add_argument("-g", "--single-sentence-granularity", action="store_true")
     sliding_prompt_p.add_argument("--without-siblings", action="store_true")
     sliding_prompt_p.add_argument("--no-granular-filter", action="store_true")
-    sliding_prompt_p.add_argument("--granular-similarity-score", type=float, default=DEFAULT_GRANULAR_SIMILARITY_SCORE, help="Minimum similarity score threshold for granular filtering step (default: 0.5)")
+    sliding_prompt_p.add_argument("--granular-similarity-score", type=float, default=DEFAULT_GRANULAR_SIMILARITY_SCORE)
 
     cluster_p = subparsers.add_parser("cluster")
-    cluster_p.add_argument("--chunks", nargs="+", required=True, help="List of sentences")
-    cluster_p.add_argument("-s", "--similarity-score", type=float, default=DEFAULT_CLUSTER_SIMILARITY_SCORE, help="Minimum similarity score threshold (default: 0.94)")
-    cluster_p.add_argument("-g", "--single-sentence-granularity", action="store_true", help="Enable single sentence granularity clustering (default: false)")
+    cluster_p.add_argument("--chunks", nargs="+", required=True)
+    cluster_p.add_argument("-s", "--similarity-score", type=float, default=DEFAULT_CLUSTER_SIMILARITY_SCORE)
+    cluster_p.add_argument("-g", "--single-sentence-granularity", action="store_true")
 
     prompt_p = subparsers.add_parser("prompt")
-    prompt_p.add_argument("-p", "--prompt", required=True, help="The prompt to send to the LLM")
+    prompt_p.add_argument("-p", "--prompt", required=True)
     prompt_p.add_argument("--system-prompt", help="System prompt to prefill before prompting")
     prompt_p.add_argument("-m", "--model", help="Model path")
     prompt_p.add_argument("-t", "--chat-template", help="Chat template")
-    prompt_p.add_argument("--do-not-reset-context", action="store_true", help="Do not reset context after prompt (default: false)")
+    prompt_p.add_argument("--do-not-reset-context", action="store_true")
+
+    # Updated Phase 3: Hybrid Retrieval Parser[cite: 1, 4]
+    retrieve_p = subparsers.add_parser("retrieve")
+    retrieve_p.add_argument("-pq", "--pivot-query", required=True, help="Keyword-focused query for BM25")
+    retrieve_p.add_argument("-aq", "--attribute-query", required=True, help="Semantic query for Vector Search")
+    retrieve_p.add_argument("-l", "--limit", type=int, default=30)
+
+    # Updated Phase 1-7: Pipeline Parser[cite: 1]
+    pipeline_p = subparsers.add_parser("pipeline")
+    pipeline_p.add_argument("--input", required=True, help="Raw text input for extraction")
+    pipeline_p.add_argument("--ff", "--file-filter", nargs="+", help="RAG sources")
+    pipeline_p.add_argument("--fact-model", default="fact-extractor-1.7b")
+    pipeline_p.add_argument("--query-model", default="query-generator-1.5b")
+    pipeline_p.add_argument("--judge-model", default="fact-judge-1.7b")
+    pipeline_p.add_argument("--rerank-threshold", type=float, default=DEFAULT_RERANK_THRESHOLD)
 
     args = parser.parse_known_args()
     args_dict = vars(args[0])
-    
-    # Merge early args with full args (verbose flag from early parser takes precedence)
     args_dict['verbose'] = known_args.verbose
 
     if args_dict['command'] == "upsert":
         upsert_cmd.execute(args_dict['files'])
     elif args_dict['command'] == "search":
-        results = search_cmd.execute(args_dict['query'], args_dict['file_filter'], args_dict['limit'], args_dict['similarity_score'], args_dict['single_sentence_granularity'], args_dict['filter_seen_chunks'])
+        results = search_cmd.execute(
+            args_dict['query'], 
+            args_dict['file_filter'], 
+            args_dict['limit'], 
+            args_dict['similarity_score'], 
+            args_dict['single_sentence_granularity'], 
+            args_dict['filter_seen_chunks']
+        )
         print(json.dumps([asdict(r) for r in results], indent=2))
     elif args_dict['command'] == "sliding-prompt":
         results = sliding_prompt_cmd.execute(
@@ -140,6 +159,25 @@ def main():
             model_path=args_dict.get('model'),
             chat_template=args_dict.get('chat_template'),
             do_not_reset_context=args_dict.get('do_not_reset_context', False)
+        )
+        print(json.dumps(results, indent=2))
+    elif args_dict['command'] == "retrieve":
+        # Hybrid retrieval using distinct queries[cite: 1, 4]
+        results = retrieve_cmd.execute(
+            pivot_query=args_dict['pivot_query'],
+            attribute_query=args_dict['attribute_query'],
+            top_k=args_dict['limit']
+        )
+        print(json.dumps(results, indent=2))
+    elif args_dict['command'] == "pipeline":
+        # Full 7-Phase Execution[cite: 1, 14]
+        results = pipeline_cmd.execute(
+            input_text=args_dict['input'],
+            file_filters=args_dict['ff'] or [],
+            fact_model=args_dict['fact_model'],
+            query_model=args_dict['query_model'],
+            judge_model=args_dict['judge_model'],
+            rerank_threshold=args_dict['rerank_threshold']
         )
         print(json.dumps(results, indent=2))
     else:

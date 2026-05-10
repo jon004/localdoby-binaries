@@ -1,6 +1,9 @@
 # Core Vector Operations & Indexing
 hnswlib==0.8.0
 numpy==1.26.4
+sentence-transformers==3.0.1  # For Cross-Encoder (Phase 4) and Bi-Encoder (Phase 3)[cite: 1, 4, 9]
+scikit-learn==1.4.2           # Required for clustering and scoring math[cite: 12, 24]
+torch>=2.2.0                  # Explicitly required for Phase 4 Reranker[cite: 9, 19]
 
 # API Communication
 requests==2.32.2
@@ -8,19 +11,20 @@ requests==2.32.2
 # Data Handling
 pandas==2.2.2
 
-# Document Processing (Pinned for stability)
+# Document Processing (Phase 0: Chunking)[cite: 1, 13]
 docling-core==2.25.0
 docling==2.28.4
 transformers==4.42.0
 
-# Audio Processing (for speech-to-text)
-mlx-whisper  # Apple Silicon acceleration (optional, auto-detected)
-ffmpeg-python  # Audio format support
+# Audio Processing
+mlx-whisper                   # Apple Silicon acceleration[cite: 19, 24]
+ffmpeg-python
 
-# Utilities
+# Build & Utilities
+Cython                        # Required for binary distribution[cite: 19, 20]
 tqdm==4.66.2
 PyYAML==6.0.1
 
-# Web Server
+# Web Server (Optional for local CLI, but used for LLM Server comms)[cite: 24]
 fastapi==0.110.0
 uvicorn[standard]==0.29.0
