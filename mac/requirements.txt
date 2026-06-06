@@ -1,41 +1,24 @@
-# --- Index Configuration ---
-# Use standard PyPI for general packages, and PyTorch index for GPU builds
---extra-index-url https://download.pytorch.org/whl/cu121
-
-# Core Vector Operations & Indexing
-hnswlib==0.8.0
-numpy==1.26.4
-sentence-transformers==3.0.1
-scikit-learn==1.4.2
-
-# GPU-Accelerated PyTorch
-torch>=2.2.0
-torchvision>=0.17.0
-torchaudio>=2.2.0
-
-# Document Processing
-docling-core>=2.73.0
-docling>=2.90.0
+# --- Core ---
+docling>=2.97.0
 transformers>=4.42.0
-onnxruntime-gpu; sys_platform != 'darwin'
-onnxruntime; sys_platform == 'darwin'
+torch>=2.4.0
+torchvision>=0.19.0
+torchaudio>=2.4.0
 
-# API Communication
-requests==2.32.2
+# --- Dependencies ---
+hnswlib==0.8.0
+numpy>=1.26.4
+sentence-transformers>=3.0.1
+scikit-learn>=1.4.2
+requests>=2.32.2
+pandas>=2.2.2
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+PyYAML>=6.0.1
+tqdm>=4.66.2
 
-# Data Handling
-pandas==2.2.2
-
-# Audio Processing (OS-Specific)
+# --- Mac Audio ---
 mlx-whisper; sys_platform == 'darwin'
-openai-whisper; sys_platform == 'win32'
 ffmpeg-python
 
-# Build & Utilities
-Cython
-tqdm==4.66.2
-PyYAML==6.0.1
-
-# Web Server
-fastapi==0.110.0
-uvicorn[standard]==0.29.0
+ocrmac >= 1.0.1; sys_platform == 'darwin'
