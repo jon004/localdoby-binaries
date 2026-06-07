@@ -16,9 +16,9 @@ fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 PyYAML>=6.0.1
 tqdm>=4.66.2
+spacy>=3.7.0
 
 # --- Mac Audio ---
 mlx-whisper; sys_platform == 'darwin'
 ffmpeg-python
-
-ocrmac >= 1.0.1; sys_platform == 'darwin'
+ocrmac>=1.0.1; sys_platform == 'darwin'
