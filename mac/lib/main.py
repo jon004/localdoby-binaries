@@ -33,7 +33,8 @@ def main():
             cmd.execute(args.file)
         elif args.command == "pipeline":
             cmd = PipelineCommand(conn)
-            print(json.dumps(cmd.execute(input_text=args.query), indent=2))
+            result = cmd.execute(input_text=args.query)
+            print(json.dumps(result, indent=2))
     finally:
         conn.close()
 
